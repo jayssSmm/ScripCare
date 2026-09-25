@@ -13,7 +13,6 @@ def encode_image(image_path):
 
 client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
-
 def get_Prescription(image_path):
     prompt = os.getenv("prompt")
     base64_image = encode_image(image_path)
