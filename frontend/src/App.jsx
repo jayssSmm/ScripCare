@@ -60,15 +60,62 @@ const defaultSettings = {
 }
 
 const getPatientDataKey = (id) => `bsure-patient-data-${id}`
+const getActivePageKey = (id) => `bsure-active-page-${id}`
 
 const getPatientData = (profile) => ({
-  profile: profile.profile,
-  medicines: profile.medicines,
-  caregiver: profile.caregiver,
-  settings: profile.settings,
-  notifications: profile.notifications,
-  doseHistory: [],
+  profile: profile.profile || defaultProfile,
+  medicines: profile.medicines || [],
+  caregiver: profile.caregiver || null,
+  settings: profile.settings || defaultSettings,
+  notifications: profile.notifications || [],
+  doseHistory: profile.doseHistory || [],
 })
+
+const readStoredSession = () => {
+  try {
+    const storedSession = JSON.parse(localStorage.getItem('bsure-session'))
+    return storedSession?.isLoggedIn && storedSession.user?.id ? storedSession : defaultAuth
+  } catch {
+    return defaultAuth
+  }
+}
+
+const readStoredPatientData = (session) => {
+  if (!session?.isLoggedIn || !session.user) return {}
+
+  const patientId = session.user.role === 'caregiver' ? session.user.connectedPatientId : session.user.id
+  if (!patientId) return {}
+
+  try {
+    const storedData = localStorage.getItem(getPatientDataKey(patientId))
+    if (storedData) return JSON.parse(storedData)
+  } catch {
+    return {}
+  }
+
+  if (session.user.role === 'caregiver') return getPatientData(demoPatient)
+
+  const demoProfile = demoProfiles.find((profile) => profile.id === patientId && profile.role === 'patient')
+  if (demoProfile) return getPatientData(demoProfile)
+
+  try {
+    const account = JSON.parse(localStorage.getItem('bsure-accounts') || '[]')
+      .find((savedAccount) => savedAccount.id === patientId)
+    return getPatientData(account?.data || { profile: account?.user })
+  } catch {
+    return {}
+  }
+}
+
+const readStoredActivePage = (session) => {
+  if (!session?.isLoggedIn || !session.user?.id) return 'Dashboard'
+  try {
+    const page = localStorage.getItem(getActivePageKey(session.user.id))
+    return navItems.includes(page) ? page : 'Dashboard'
+  } catch {
+    return 'Dashboard'
+  }
+}
 
 function BrandMark() {
   return (
@@ -83,23 +130,24 @@ function BrandMark() {
 }
 
 function App() {
-  const [appView, setAppView] = useState('landing')
-  const [activePage, setActivePage] = useState('Dashboard')
+  const [appView, setAppView] = useState(() => readStoredSession().isLoggedIn ? 'app' : 'landing')
+  const [activePage, setActivePage] = useState(() => readStoredActivePage(readStoredSession()))
   const [authMode, setAuthMode] = useState('login')
-  const [session, setSession] = useState(() => {
-    const stored = localStorage.getItem('bsure-session')
-    return stored ? JSON.parse(stored) : defaultAuth
-  })
-  const [userProfile, setUserProfile] = useState(() => {
-    return defaultProfile
-  })
-  const [medicines, setMedicines] = useState([])
-  const [caregiver, setCaregiver] = useState(null)
-  const [notifications, setNotifications] = useState([])
-  const [settings, setSettings] = useState(defaultSettings)
-  const [doseHistory, setDoseHistory] = useState([])
+  const [forgotContact, setForgotContact] = useState('')
+  const [forgotError, setForgotError] = useState('')
+  const [forgotSubmitted, setForgotSubmitted] = useState(false)
+  const [session, setSession] = useState(readStoredSession)
+  const [patientDataLoaded, setPatientDataLoaded] = useState(() => readStoredSession().user?.role === 'patient' && readStoredSession().isLoggedIn)
+  const [userProfile, setUserProfile] = useState(() => readStoredPatientData(readStoredSession()).profile || defaultProfile)
+  const [medicines, setMedicines] = useState(() => readStoredPatientData(readStoredSession()).medicines || [])
+  const [caregiver, setCaregiver] = useState(() => readStoredPatientData(readStoredSession()).caregiver || null)
+  const [notifications, setNotifications] = useState(() => readStoredPatientData(readStoredSession()).notifications || [])
+  const [settings, setSettings] = useState(() => readStoredPatientData(readStoredSession()).settings || defaultSettings)
+  const [doseHistory, setDoseHistory] = useState(() => readStoredPatientData(readStoredSession()).doseHistory || [])
   const [notificationsOpen, setNotificationsOpen] = useState(false)
   const [profileOpen, setProfileOpen] = useState(false)
+  const [profileCamera, setProfileCamera] = useState({ open: false, stream: null, error: '' })
+  const [profilePhotoDraft, setProfilePhotoDraft] = useState('')
   const [selectedMedicine, setSelectedMedicine] = useState(null)
   const [toast, setToast] = useState('')
   const [selectedFile, setSelectedFile] = useState(null)
@@ -151,13 +199,20 @@ function App() {
   const [selectedVoiceName, setSelectedVoiceName] = useState('')
   const cameraVideoRef = useRef(null)
   const fileInputRef = useRef(null)
+  const profilePhotoInputRef = useRef(null)
+  const profileCameraVideoRef = useRef(null)
 
   useEffect(() => {
     localStorage.setItem('bsure-session', JSON.stringify(session))
   }, [session])
 
   useEffect(() => {
-    if (!session.user?.id || session.user.role !== 'patient') return
+    if (!session.isLoggedIn || !session.user?.id) return
+    localStorage.setItem(getActivePageKey(session.user.id), activePage)
+  }, [session, activePage])
+
+  useEffect(() => {
+    if (!patientDataLoaded || !session.user?.id || session.user.role !== 'patient') return
     localStorage.setItem(getPatientDataKey(session.user.id), JSON.stringify({
       profile: userProfile,
       medicines,
@@ -166,13 +221,23 @@ function App() {
       notifications,
       doseHistory,
     }))
-  }, [session, userProfile, medicines, caregiver, settings, notifications, doseHistory])
+  }, [patientDataLoaded, session, userProfile, medicines, caregiver, settings, notifications, doseHistory])
 
   useEffect(() => {
     if (!toast) return undefined
     const timer = setTimeout(() => setToast(''), 2600)
     return () => clearTimeout(timer)
   }, [toast])
+
+  useEffect(() => {
+    if (!profileCamera.open || !profileCamera.stream || !profileCameraVideoRef.current) return undefined
+    const video = profileCameraVideoRef.current
+    video.srcObject = profileCamera.stream
+    video.play().catch(() => undefined)
+    return () => {
+      video.srcObject = null
+    }
+  }, [profileCamera.open, profileCamera.stream])
 
   useEffect(() => {
     const updateVoices = () => {
@@ -506,7 +571,8 @@ function App() {
     setSettings(patientData.settings || defaultSettings)
     setNotifications(patientData.notifications || [])
     setDoseHistory(patientData.doseHistory || [])
-    setSession({
+    setPatientDataLoaded(account.role === 'patient')
+    const authenticatedSession = {
       isLoggedIn: true,
       user: {
         id: account.id,
@@ -516,7 +582,9 @@ function App() {
         connectedPatientId: account.connectedPatientId,
         connectedPatientName: account.connectedPatientName,
       },
-    })
+    }
+    localStorage.setItem('bsure-session', JSON.stringify(authenticatedSession))
+    setSession(authenticatedSession)
     setAppView('app')
     setActivePage(account.role === 'caregiver' ? 'Caregiver' : 'Dashboard')
     showToast(account.role === 'caregiver' ? 'Caregiver demo opened.' : 'Welcome back!')
@@ -563,7 +631,10 @@ function App() {
     setSettings(defaultSettings)
     setNotifications([])
     setDoseHistory([])
-    setSession({ isLoggedIn: true, user: { id: user.id, name: user.name, email: user.email, role: 'patient' } })
+    setPatientDataLoaded(true)
+    const authenticatedSession = { isLoggedIn: true, user: { id: user.id, name: user.name, email: user.email, role: 'patient' } }
+    localStorage.setItem('bsure-session', JSON.stringify(authenticatedSession))
+    setSession(authenticatedSession)
     setAuthForm({ name: '', email: '', password: '', confirmPassword: '' })
     setSignupErrors({})
     setAppView('app')
@@ -572,16 +643,163 @@ function App() {
   }
 
   const handleLogout = () => {
+    if (session.user?.id) {
+      localStorage.removeItem(getActivePageKey(session.user.id))
+    }
+    localStorage.setItem('bsure-session', JSON.stringify(defaultAuth))
     setSession(defaultAuth)
     setAppView('landing')
     setActivePage('Dashboard')
     showToast('You have been signed out.')
   }
 
+  const closeProfile = () => {
+    profileCamera.stream?.getTracks().forEach((track) => track.stop())
+    setProfileCamera({ open: false, stream: null, error: '' })
+    setProfilePhotoDraft('')
+    setProfileOpen(false)
+  }
+
+  const cancelProfileCamera = () => {
+    profileCamera.stream?.getTracks().forEach((track) => track.stop())
+    setProfileCamera((current) => ({ ...current, open: false, stream: null }))
+  }
+
+  const loadProfilePhoto = (file) => new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onerror = () => reject(new Error('The image could not be read.'))
+    reader.onload = () => {
+      const image = new Image()
+      image.onerror = () => reject(new Error('The selected file is not a supported image.'))
+      image.onload = () => {
+        const scale = Math.min(1, 512 / Math.max(image.width, image.height))
+        const canvas = document.createElement('canvas')
+        canvas.width = Math.max(1, Math.round(image.width * scale))
+        canvas.height = Math.max(1, Math.round(image.height * scale))
+        canvas.getContext('2d').drawImage(image, 0, 0, canvas.width, canvas.height)
+        resolve(canvas.toDataURL('image/jpeg', 0.82))
+      }
+      image.src = reader.result
+    }
+    reader.readAsDataURL(file)
+  })
+
+  const handleProfilePhotoUpload = async (event) => {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+      setProfileCamera((current) => ({ ...current, error: 'Choose a JPG, PNG, or WEBP image.' }))
+      return
+    }
+
+    try {
+      const avatarUrl = await loadProfilePhoto(file)
+      setUserProfile((current) => ({ ...current, avatarUrl }))
+      setProfilePhotoDraft('')
+      setProfileCamera((current) => ({ ...current, error: '' }))
+    } catch {
+      setProfileCamera((current) => ({ ...current, error: 'The selected image could not be opened. Please choose another photo.' }))
+    }
+  }
+
+  const openProfileCamera = async () => {
+    setProfileCamera((current) => ({ ...current, error: '' }))
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setProfileCamera({ open: false, stream: null, error: "Camera access isn't available. You can upload a photo instead." })
+      return
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false })
+      setProfilePhotoDraft('')
+      setProfileCamera({ open: true, stream, error: '' })
+    } catch {
+      setProfileCamera({ open: false, stream: null, error: "Camera access isn't available. You can upload a photo instead." })
+    }
+  }
+
+  const captureProfilePhoto = () => {
+    const video = profileCameraVideoRef.current
+    if (!video?.videoWidth || !video.videoHeight) {
+      setProfileCamera((current) => ({ ...current, error: 'The camera is not ready yet. Please try again.' }))
+      return
+    }
+
+    const scale = Math.min(1, 512 / Math.max(video.videoWidth, video.videoHeight))
+    const canvas = document.createElement('canvas')
+    canvas.width = Math.max(1, Math.round(video.videoWidth * scale))
+    canvas.height = Math.max(1, Math.round(video.videoHeight * scale))
+    canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height)
+    const photo = canvas.toDataURL('image/jpeg', 0.82)
+    profileCamera.stream?.getTracks().forEach((track) => track.stop())
+    setProfilePhotoDraft(photo)
+    setProfileCamera({ open: false, stream: null, error: '' })
+  }
+
+  const useProfilePhotoDraft = () => {
+    if (!profilePhotoDraft) return
+    setUserProfile((current) => ({ ...current, avatarUrl: profilePhotoDraft }))
+    setProfilePhotoDraft('')
+    setProfileCamera({ open: false, stream: null, error: '' })
+  }
+
+  const handleForgotPassword = (event) => {
+    event.preventDefault()
+    const contact = forgotContact.trim()
+    if (!contact) {
+      setForgotError('Please enter your email or phone number.')
+      return
+    }
+
+    const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contact)
+    const isPhone = /^\+?[\d\s()-]{7,}$/.test(contact)
+    if (!isEmail && !isPhone) {
+      setForgotError('Enter a valid email or phone number.')
+      return
+    }
+
+    setForgotError('')
+    setForgotSubmitted(true)
+  }
+
+  const returnToLogin = () => {
+    setAuthMode('login')
+    setForgotContact('')
+    setForgotError('')
+    setForgotSubmitted(false)
+    setAppView('login')
+  }
+
+  const navigateFromBrand = () => {
+    if (session.isLoggedIn) {
+      setAppView('app')
+      setActivePage('Dashboard')
+      return
+    }
+    setAppView('landing')
+  }
+
+  const handleBrandKeyDown = (event) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault()
+      navigateFromBrand()
+    }
+  }
+
+  const brandNavigationProps = {
+    role: 'button',
+    tabIndex: 0,
+    'aria-label': session.isLoggedIn ? 'B-Sure logo, go to Dashboard' : 'B-Sure logo, go to Landing Page',
+    onClick: navigateFromBrand,
+    onKeyDown: handleBrandKeyDown,
+  }
+
   const renderLanding = () => (
     <div className="landing-shell">
       <header className="landing-header">
-        <div className="brand-box landing-brand">
+        <div className="brand-box landing-brand" {...brandNavigationProps}>
           <BrandMark />
           <div>
             <span className="brand-wordmark">B-Sure</span>
@@ -719,7 +937,7 @@ function App() {
   const renderAuth = () => (
     <div className="auth-shell">
       <div className="auth-card">
-        <div className="brand-box auth-brand">
+        <div className="brand-box auth-brand" {...brandNavigationProps}>
           <BrandMark />
           <div>
             <span className="brand-wordmark">B-Sure</span>
@@ -767,7 +985,12 @@ function App() {
                 <input type="checkbox" checked={loginForm.rememberMe} onChange={(event) => setLoginForm((current) => ({ ...current, rememberMe: event.target.checked }))} />
                 <span>Remember me</span>
               </label>
-              <button type="button" className="text-btn">Forgot password</button>
+              <button type="button" className="text-btn" onClick={() => {
+                setForgotContact('')
+                setForgotError('')
+                setForgotSubmitted(false)
+                setAppView('forgot')
+              }}>Forgot password</button>
             </div>
 
             <button type="submit" className="primary-btn wide-btn">Login</button>
@@ -829,6 +1052,55 @@ function App() {
           </form>
         )}
       </div>
+    </div>
+  )
+
+  const renderForgotPassword = () => (
+    <div className="auth-shell">
+      <section className="auth-card forgot-card">
+        <div className="brand-box auth-brand" {...brandNavigationProps}>
+          <BrandMark />
+          <div>
+            <span className="brand-wordmark">B-Sure</span>
+            <small>Medication care</small>
+          </div>
+        </div>
+
+        {forgotSubmitted ? (
+          <div className="forgot-success" role="status">
+            <p className="eyebrow">Account support</p>
+            <h1>Check your inbox</h1>
+            <p>If an account exists for this contact, reset instructions would be sent here.</p>
+            <strong>{forgotContact}</strong>
+            <button type="button" className="primary-btn wide-btn" onClick={returnToLogin}>Back to Login</button>
+          </div>
+        ) : (
+          <>
+            <div className="forgot-heading">
+              <h1>Forgot your password?</h1>
+              <p>Don&apos;t worry. Enter the email or phone number associated with your B-Sure account and we&apos;ll help you reset your password.</p>
+            </div>
+            <form className="auth-form" onSubmit={handleForgotPassword}>
+              <label>
+                Email / phone
+                <input
+                  type="text"
+                  value={forgotContact}
+                  aria-invalid={Boolean(forgotError)}
+                  onChange={(event) => {
+                    setForgotContact(event.target.value)
+                    setForgotError('')
+                  }}
+                  placeholder="you@example.com or phone number"
+                />
+                {forgotError && <span className="field-error" role="alert">{forgotError}</span>}
+              </label>
+              <button type="submit" className="primary-btn wide-btn">Send reset link</button>
+              <button type="button" className="text-btn forgot-back" onClick={returnToLogin}>Back to Login</button>
+            </form>
+          </>
+        )}
+      </section>
     </div>
   )
 
@@ -1282,10 +1554,10 @@ function App() {
     }
   }
 
-  return appView === 'landing' ? renderLanding() : appView === 'auth' ? renderAuth() : appView === 'login' ? renderAuth() : session.user?.role === 'caregiver' ? renderCaregiverDashboard() : (
+  return appView === 'landing' ? renderLanding() : appView === 'auth' ? renderAuth() : appView === 'login' ? renderAuth() : appView === 'forgot' ? renderForgotPassword() : session.user?.role === 'caregiver' ? renderCaregiverDashboard() : (
     <div className="app-shell">
       <aside className="sidebar" aria-label="Sidebar navigation">
-        <div className="brand-box">
+        <div className="brand-box" {...brandNavigationProps}>
           <BrandMark />
           <div>
             <span className="brand-wordmark">B-Sure</span>
@@ -1357,19 +1629,56 @@ function App() {
       )}
 
       {profileOpen && (
-        <div className="modal-backdrop" onClick={() => setProfileOpen(false)}>
+        <div className="modal-backdrop" onClick={closeProfile}>
           <div className="modal-panel profile-panel" onClick={(event) => event.stopPropagation()}>
             <div className="modal-header">
               <h3>Profile</h3>
-              <button type="button" className="ghost-btn" onClick={() => setProfileOpen(false)}>Close</button>
+              <button type="button" className="ghost-btn" onClick={closeProfile}>Close</button>
             </div>
             <div className="profile-info">
-              <div className="avatar large">{userProfile.name.split(' ').map((part) => part[0]).slice(0, 2).join('')}</div>
+              <div className="avatar large profile-avatar" role="img" aria-label={`${userProfile.name || 'Patient'} profile photo`}>
+                {profilePhotoDraft || userProfile.avatarUrl
+                  ? <img src={profilePhotoDraft || userProfile.avatarUrl} alt="Profile" />
+                  : userProfile.name.split(' ').map((part) => part[0]).slice(0, 2).join('')}
+              </div>
               <div>
                 <strong>{userProfile.name}</strong>
                 <span>{userProfile.age}</span>
               </div>
             </div>
+            <input
+              ref={profilePhotoInputRef}
+              className="visually-hidden"
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              aria-label="Upload profile photo"
+              onChange={handleProfilePhotoUpload}
+            />
+            <div className="profile-photo-actions">
+              <button type="button" className="secondary-btn" onClick={() => profilePhotoInputRef.current?.click()}>Upload photo</button>
+              <button type="button" className="secondary-btn" onClick={openProfileCamera}>Take photo</button>
+            </div>
+            {profileCamera.error && (
+              <div className="profile-camera-error" role="alert">
+                <span>{profileCamera.error}</span>
+                <button type="button" className="text-btn" onClick={() => profilePhotoInputRef.current?.click()}>Upload photo</button>
+              </div>
+            )}
+            {profileCamera.open && (
+              <div className="profile-camera">
+                <video ref={profileCameraVideoRef} autoPlay playsInline muted aria-label="Live profile camera preview" />
+                <div className="profile-camera-actions">
+                  <button type="button" className="primary-btn" onClick={captureProfilePhoto}>Capture</button>
+                  <button type="button" className="secondary-btn" onClick={cancelProfileCamera}>Cancel</button>
+                </div>
+              </div>
+            )}
+            {profilePhotoDraft && (
+              <div className="profile-camera-actions profile-photo-confirm">
+                <button type="button" className="secondary-btn" onClick={openProfileCamera}>Retake</button>
+                <button type="button" className="primary-btn" onClick={useProfilePhotoDraft}>Use Photo</button>
+              </div>
+            )}
             <div className="profile-form">
               <label>
                 Name
@@ -1389,7 +1698,7 @@ function App() {
               </label>
             </div>
             <button type="button" className="primary-btn" onClick={() => {
-              setProfileOpen(false)
+              closeProfile()
               showToast('Profile saved')
             }}>Save</button>
           </div>
