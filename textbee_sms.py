@@ -30,10 +30,10 @@ def send_sms(device_id: str, api_key: str, recipients: list[str], message: str) 
         requests.HTTPError: if the request fails (bad API key, invalid
         device, etc.).
     """
-    url = "https://api.textbee.dev/api/v1/gateway/send-sms"
+    url = f"https://api.textbee.dev/api/v1/gateway/devices/{device_id}/send-sms"
     response = requests.post(
         url,
-        json={"deviceId": device_id, "recipients": recipients, "message": message},
+        json={"recipients": recipients, "message": message},
         headers={"x-api-key": api_key, "Content-Type": "application/json"},
         timeout=30,
     )
@@ -48,7 +48,7 @@ if __name__ == "__main__":
     result = send_sms(
         device_id=DEVICE_ID,
         api_key=API_KEY,
-        recipients=["+12015550123"],
-        message="Hello from Python!",
+        recipients=["+918777720681"],
+        message="Take Paracetamol 500mg at 6 PM after food. This is a friendly reminder from ScripCare."
     )
     print(result)
