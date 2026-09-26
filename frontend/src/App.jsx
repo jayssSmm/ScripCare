@@ -178,6 +178,7 @@ function App() {
   const [settings, setSettings] = useState(() => readStoredPatientData(readStoredSession()).settings || defaultSettings)
   const [doseHistory, setDoseHistory] = useState(() => readStoredPatientData(readStoredSession()).doseHistory || [])
   const [notificationsOpen, setNotificationsOpen] = useState(false)
+  const [clearNotificationsConfirm, setClearNotificationsConfirm] = useState(false)
   const [profileOpen, setProfileOpen] = useState(false)
   const [clearDoseHistoryConfirm, setClearDoseHistoryConfirm] = useState(false)
   const [profileCamera, setProfileCamera] = useState({ open: false, stream: null, error: '' })
@@ -498,6 +499,11 @@ function App() {
   const handleMarkAllNotificationsRead = () => {
     if (unreadNotificationCount === 0) return
     setNotifications((previous) => previous.map((notification) => ({ ...notification, read: true })))
+  }
+
+  const handleClearAllNotifications = () => {
+    setNotifications([])
+    setClearNotificationsConfirm(false)
   }
 
   const handleClearDoseHistory = () => {
@@ -1340,9 +1346,6 @@ function App() {
         </div>
 
         <div className="topbar-actions">
-          <button type="button" className="secondary-btn small-btn" onClick={() => setNotificationsOpen(true)}>
-            Notifications <span className="notification-badge">{unreadNotificationCount}</span>
-          </button>
           <button type="button" className="ghost-btn" onClick={() => setProfileOpen(true)}>Profile</button>
           <button type="button" className="ghost-btn" onClick={handleLogout}>Logout</button>
         </div>
@@ -1435,8 +1438,9 @@ function App() {
 
         <article className="panel notifications-panel" aria-labelledby="notifications-heading">
           <div className="panel-header">
-            <h3 id="notifications-heading">Notifications</h3>
+            <h3 id="notifications-heading">Notifications <span className="notification-badge">{unreadNotificationCount}</span></h3>
             <div className="button-row">
+              <button type="button" className="panel-link" onClick={() => setClearNotificationsConfirm(true)} disabled={notifications.length === 0}>Clear All</button>
               <button type="button" className="panel-link" onClick={handleMarkAllNotificationsRead} disabled={unreadNotificationCount === 0}>Mark all read</button>
               <button type="button" className="panel-link" onClick={() => setNotificationsOpen(true)}>View all</button>
             </div>
@@ -1870,6 +1874,22 @@ function App() {
                 </li>
               ))}
             </ul>
+          </div>
+        </div>
+      )}
+
+      {clearNotificationsConfirm && (
+        <div className="modal-backdrop" onClick={() => setClearNotificationsConfirm(false)}>
+          <div className="modal-panel medicine-panel" role="dialog" aria-modal="true" aria-labelledby="clear-notifications-title" onClick={(event) => event.stopPropagation()}>
+            <div className="modal-header">
+              <h3 id="clear-notifications-title">Clear all notifications?</h3>
+              <button type="button" className="ghost-btn" onClick={() => setClearNotificationsConfirm(false)}>Cancel</button>
+            </div>
+            <p className="panel-copy">This will permanently remove all notifications.</p>
+            <div className="modal-actions">
+              <button type="button" className="secondary-btn" onClick={() => setClearNotificationsConfirm(false)}>Keep notifications</button>
+              <button type="button" className="primary-btn" onClick={handleClearAllNotifications}>Confirm clear</button>
+            </div>
           </div>
         </div>
       )}
