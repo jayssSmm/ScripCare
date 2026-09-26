@@ -3,3 +3,7 @@ dotenv
 fastapi
 httpx
 sqlalchemy
+apscheduler
+requests
+python-multipart
+psycopg[binary]

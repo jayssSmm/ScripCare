@@ -30,10 +30,10 @@ def send_sms(device_id: str, api_key: str, recipients: list[str], message: str) 
         requests.HTTPError: if the request fails (bad API key, invalid
         device, etc.).
     """
-    url = f"https://api.textbee.dev/api/v1/gateway/devices/{device_id}/send-sms"
+    url = "https://api.textbee.dev/api/v1/gateway/send-sms"
     response = requests.post(
         url,
-        json={"recipients": recipients, "message": message},
+        json={"deviceId": device_id, "recipients": recipients, "message": message},
         headers={"x-api-key": api_key, "Content-Type": "application/json"},
         timeout=30,
     )

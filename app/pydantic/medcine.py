@@ -1,5 +1,5 @@
 # schemas.py
-from typing import Optional, List
+from typing import List, Optional
 from pydantic import BaseModel
 
 class MedicineIn(BaseModel):
@@ -9,6 +9,9 @@ class MedicineIn(BaseModel):
     duration: Optional[str] = None
     timing: Optional[str] = None
     food_instruction: Optional[str] = None
+    phone_number: Optional[str] = None
+    reminder_times: Optional[str] = None
+    reminder_active: Optional[bool] = True
 
 class MedicinesPayload(BaseModel):
     medicines: List[MedicineIn]
