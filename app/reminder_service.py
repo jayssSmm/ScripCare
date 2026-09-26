@@ -46,7 +46,7 @@ def send_caregiver_reminder(patient_name, medicine_name, reminder_time, idempote
         raise HTTPException(status_code=503, detail="TextBee SMS service is not configured.")
 
     message = (
-        f"B-Sure: A medication reminder has been set for {patient_name} "
+        f"ScripCare: A medication reminder has been set for {patient_name} "
         f"for {medicine_name} at {reminder_time}."
     )
     signature = (message, hashlib.sha256(caregiver_phone.encode("utf-8")).hexdigest())

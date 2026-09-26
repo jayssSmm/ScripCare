@@ -1018,7 +1018,7 @@ function App() {
   const brandNavigationProps = {
     role: 'button',
     tabIndex: 0,
-    'aria-label': session.isLoggedIn ? 'B-Sure logo, go to Dashboard' : 'B-Sure logo, go to Landing Page',
+    'aria-label': session.isLoggedIn ? 'ScripCare logo, go to Dashboard' : 'ScripCare logo, go to Landing Page',
     onClick: navigateFromBrand,
     onKeyDown: handleBrandKeyDown,
   }
@@ -1029,7 +1029,7 @@ function App() {
         <div className="brand-box landing-brand" {...brandNavigationProps}>
           <BrandMark />
           <div>
-            <span className="brand-wordmark">B-Sure</span>
+            <span className="brand-wordmark">ScripCare</span>
             <small>Medication care</small>
           </div>
         </div>
@@ -1051,11 +1051,11 @@ function App() {
       <main className="landing-main">
         <section className="landing-hero section-reveal">
           <div className="hero-text">
-            <p className="eyebrow accent">B-Sure</p>
+            <p className="eyebrow accent">ScripCare</p>
             <h1>Stay on track with every dose.</h1>
-            <p className="hero-subtitle">B-Sure turns your doctor&apos;s prescription into a simple medication routine, helping you remember what to take and when.</p>
+            <p className="hero-subtitle">ScripCare turns your doctor&apos;s prescription into a simple medication routine, helping you remember what to take and when.</p>
             <div className="hero-actions">
-              <button type="button" className="secondary-btn" onClick={() => document.getElementById('how-it-works')?.scrollIntoView({ behavior: 'smooth' })}>How B-Sure Works</button>
+              <button type="button" className="secondary-btn" onClick={() => document.getElementById('how-it-works')?.scrollIntoView({ behavior: 'smooth' })}>How ScripCare Works</button>
             </div>
             <div className="hero-badges">
               <span>Prescription scanning</span>
@@ -1095,7 +1095,7 @@ function App() {
             {[{
               step: '1',
               title: 'Scan your prescription',
-              text: 'Upload or photograph the prescription and let B-Sure organize your medicines.',
+              text: 'Upload or photograph the prescription and let ScripCare organize your medicines.',
             }, {
               step: '2',
               title: 'Review your medicines',
@@ -1167,7 +1167,7 @@ function App() {
         <div className="brand-box auth-brand" {...brandNavigationProps}>
           <BrandMark />
           <div>
-            <span className="brand-wordmark">B-Sure</span>
+            <span className="brand-wordmark">ScripCare</span>
             <small>Medication care</small>
           </div>
         </div>
@@ -1288,7 +1288,7 @@ function App() {
         <div className="brand-box auth-brand" {...brandNavigationProps}>
           <BrandMark />
           <div>
-            <span className="brand-wordmark">B-Sure</span>
+            <span className="brand-wordmark">ScripCare</span>
             <small>Medication care</small>
           </div>
         </div>
@@ -1305,7 +1305,7 @@ function App() {
           <>
             <div className="forgot-heading">
               <h1>Forgot your password?</h1>
-              <p>Don&apos;t worry. Enter the email or phone number associated with your B-Sure account and we&apos;ll help you reset your password.</p>
+              <p>Don&apos;t worry. Enter the email or phone number associated with your ScripCare account and we&apos;ll help you reset your password.</p>
             </div>
             <form className="auth-form" onSubmit={handleForgotPassword}>
               <label>
@@ -1806,7 +1806,7 @@ function App() {
         <div className="brand-box" {...brandNavigationProps}>
           <BrandMark />
           <div>
-            <span className="brand-wordmark">B-Sure</span>
+            <span className="brand-wordmark">ScripCare</span>
             <small>Medication care</small>
           </div>
         </div>

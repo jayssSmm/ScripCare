@@ -45,7 +45,7 @@ class ReminderNotificationTests(unittest.TestCase):
             api_key="test-api-key",
             recipients=[self.environment["CAREGIVER_PHONE_NUMBER"]],
             message=(
-                "B-Sure: A medication reminder has been set for Priya Sharma "
+                "ScripCare: A medication reminder has been set for Priya Sharma "
                 "for Paracetamol at 15 minutes before 8:00 AM."
             ),
         )
