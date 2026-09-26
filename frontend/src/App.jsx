@@ -117,6 +117,31 @@ const readStoredActivePage = (session) => {
   }
 }
 
+const deduplicateMedicines = (medicines) => {
+  const uniqueMedicines = new Map()
+
+  medicines.forEach((medicine) => {
+    if (!medicine || typeof medicine !== 'object') return
+    const name = typeof medicine?.name === 'string' ? medicine.name.trim() : ''
+    const key = name.toLocaleLowerCase()
+    if (!key) return
+
+    const existing = uniqueMedicines.get(key)
+    if (!existing) {
+      uniqueMedicines.set(key, { ...medicine, name })
+      return
+    }
+
+    Object.entries(medicine).forEach(([field, value]) => {
+      if ((existing[field] == null || existing[field] === '') && value != null && value !== '') {
+        existing[field] = value
+      }
+    })
+  })
+
+  return Array.from(uniqueMedicines.values())
+}
+
 function BrandMark() {
   return (
     <svg viewBox="0 0 64 64" className="brand-mark" aria-hidden="true">
@@ -401,6 +426,11 @@ function App() {
     )
   }
 
+  const handleMarkAllNotificationsRead = () => {
+    if (unreadNotificationCount === 0) return
+    setNotifications((previous) => previous.map((notification) => ({ ...notification, read: true })))
+  }
+
   const handleFileSelect = (event) => {
     const file = event.target.files?.[0]
     if (!file) return
@@ -501,8 +531,8 @@ function App() {
 
   const handleAddMedicines = () => {
     const newMedicines = ocrResults.map((medicine, index) => ({
-      id: `${medicine.name.toLowerCase().replace(/\s+/g, '-')}-${Date.now()}-${index}`,
-      name: medicine.name,
+      id: `${medicine.name.trim().toLowerCase().replace(/\s+/g, '-')}-${Date.now()}-${index}`,
+      name: medicine.name.trim(),
       dosage: medicine.dosage,
       frequency: medicine.frequency,
       duration: medicine.duration,
@@ -514,7 +544,7 @@ function App() {
       detail: `${medicine.dosage} · ${medicine.timing} · ${medicine.foodInstruction}`,
     }))
 
-    setMedicines((previous) => [...previous, ...newMedicines])
+    setMedicines((previous) => deduplicateMedicines([...previous, ...newMedicines]))
     setNotifications((previous) => [
       {
         id: Date.now(),
@@ -1281,7 +1311,10 @@ function App() {
         <article className="panel notifications-panel" aria-labelledby="notifications-heading">
           <div className="panel-header">
             <h3 id="notifications-heading">Notifications</h3>
-            <button type="button" className="panel-link" onClick={() => setNotificationsOpen(true)}>View all</button>
+            <div className="button-row">
+              <button type="button" className="panel-link" onClick={handleMarkAllNotificationsRead} disabled={unreadNotificationCount === 0}>Mark all read</button>
+              <button type="button" className="panel-link" onClick={() => setNotificationsOpen(true)}>View all</button>
+            </div>
           </div>
           {notifications.length ? (
             <ul className="notification-list">
@@ -1309,11 +1342,17 @@ function App() {
           <p className="eyebrow">Medicines</p>
           <h2>Medication routine</h2>
         </div>
-        <button type="button" className="primary-btn" onClick={() => setActivePage('Scan Prescription')}>Add prescription</button>
+        <div className="button-row">
+          <button type="button" className="secondary-btn" onClick={() => {
+            setMedicines([])
+            showToast('Medicines cleared')
+          }} disabled={medicines.length === 0}>Clear</button>
+          <button type="button" className="primary-btn" onClick={() => setActivePage('Scan Prescription')}>Add prescription</button>
+        </div>
       </div>
 
       <div className="medicine-grid">
-        {medicines.map((medicine) => (
+        {deduplicateMedicines(medicines).map((medicine) => (
           <article key={medicine.id} className="medicine-card">
             <div className="medicine-topline">
               <div>
