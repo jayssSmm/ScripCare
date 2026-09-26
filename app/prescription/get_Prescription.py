@@ -7,6 +7,9 @@ import json
 
 load_dotenv()
 
+#from app.prescription.get_Schedule import generate_medicine_schedule
+from get_Schedule import generate_medicine_schedule
+
 def encode_image(image_path):
     with open(image_path, "rb") as f:
         return base64.b64encode(f.read()).decode("utf-8")
@@ -45,6 +48,11 @@ def get_Prescription(image_path):
     return result
 
 if __name__=="__main__":
-    image_path = "test/ocr.jpg"
+    image_path = "test/ocr2.jpg"
     result = get_Prescription(image_path=image_path)
-    print(json.dumps(result, indent=2))
+    print(json.dumps(result, indent=2),end='\n')
+
+    '''
+    schedule = generate_medicine_schedule(json.dumps(result))
+    print(json.dumps(schedule, indent=2, ensure_ascii=False))
+    '''
