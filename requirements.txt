@@ -2,3 +2,4 @@ groq
 dotenv
 fastapi
 httpx
+sqlalchemy
