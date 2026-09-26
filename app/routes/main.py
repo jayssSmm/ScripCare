@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import tempfile
 
 import httpx
 from fastapi import APIRouter, File, HTTPException, UploadFile
@@ -65,19 +66,37 @@ async def send_medicine_names_to_ruth(medicine_names):
 @router.post("/post/prescription/")
 async def get_prescription(image: UploadFile = File(...)):
     if not image.content_type or not image.content_type.startswith("image/"):
-        raise HTTPException(status_code=400, detail="Uploaded file must be an image")
+        raise HTTPException(
+            status_code=400,
+            detail="Uploaded file must be an image"
+        )
 
     image_bytes = await image.read()
+    temp_path = None
 
     try:
-        raw = get_Prescription(image_bytes)
-        parsed = json.loads(raw)
-    except json.JSONDecodeError:
-        raise HTTPException(status_code=502, detail="Model returned invalid JSON")
+        with tempfile.NamedTemporaryFile(
+            delete=False,
+            suffix=".jpg"
+        ) as temp:
+            temp.write(image_bytes)
+            temp_path = temp.name
+
+        parsed = get_Prescription(temp_path)
+
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Prescription extraction failed: {e}")
+        logger.exception("Prescription extraction failed")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Prescription extraction failed: {e}"
+        )
+
+    finally:
+        if temp_path and os.path.exists(temp_path):
+            os.remove(temp_path)
 
     medicine_names = extract_medicine_names(parsed)
+
     if medicine_names:
         await send_medicine_names_to_ruth(medicine_names)
 

@@ -153,6 +153,7 @@ function App() {
   const [selectedFile, setSelectedFile] = useState(null)
   const [previewUrl, setPreviewUrl] = useState('')
   const [scanState, setScanState] = useState('idle')
+  const [isSubmittingPrescription, setIsSubmittingPrescription] = useState(false)
   const [ocrResults, setOcrResults] = useState([
     {
       id: 'ocr-1',
@@ -417,14 +418,79 @@ function App() {
     fileInputRef.current?.click()
   }
 
-  const handleContinueScan = () => {
-    if (!selectedFile) return
+  const normalizePrescriptionFile = (file) => {
+    if (!file) return null
+    if (file instanceof File) return file
+    if (file instanceof Blob) {
+      const fileName = file.name || 'prescription-image.png'
+      const mimeType = file.type || 'image/png'
+      return new File([file], fileName, { type: mimeType })
+    }
+    return null
+  }
+
+  const handleContinueScan = async () => {
+    const imageFile = normalizePrescriptionFile(selectedFile)
+    if (!imageFile) {
+      showToast('Please select a prescription image first.')
+      return
+    }
+
+    if (isSubmittingPrescription) return
+
+    setIsSubmittingPrescription(true)
     setScanState('processing')
 
-    setTimeout(() => {
+    try {
+      const formData = new FormData()
+      formData.append('image', imageFile)
+
+      const response = await fetch('http://localhost:8000/post/prescription/', {
+        method: 'POST',
+        body: formData,
+      })
+
+      let payload = null
+      try {
+        payload = await response.json()
+      } catch {
+        payload = null
+      }
+
+      if (!response.ok) {
+        const detail = payload?.detail || 'Prescription analysis failed.'
+        showToast(detail)
+        setScanState('uploaded')
+        return
+      }
+
+      const medicines = Array.isArray(payload?.medicines) ? payload.medicines : []
+      if (!medicines.length) {
+        showToast('No medicines were detected in this prescription.')
+        setScanState('uploaded')
+        return
+      }
+
+      const mappedResults = medicines.map((medicine, index) => ({
+        id: `ocr-${Date.now()}-${index}`,
+        name: medicine.medicine_name || '',
+        dosage: medicine.dosage || '',
+        frequency: medicine.frequency || '',
+        duration: medicine.duration || '',
+        timing: medicine.timing || '',
+        foodInstruction: medicine.food_instruction || medicine.foodInstruction || '',
+      }))
+
+      setOcrResults(mappedResults)
       setScanState('results')
       showToast('Medicines identified')
-    }, 1200)
+    } catch (error) {
+      console.error('Prescription upload failed:', error)
+      showToast('Unable to connect to the prescription service on port 8000. Please ensure the backend is running and CORS is allowed.')
+      setScanState('uploaded')
+    } finally {
+      setIsSubmittingPrescription(false)
+    }
   }
 
   const updateOcrField = (id, field, value) => {
@@ -508,7 +574,7 @@ function App() {
     }
   }
 
-  const capturePhoto = () => {
+  const capturePhoto = async () => {
     if (!cameraVideoRef.current) return
 
     const video = cameraVideoRef.current
@@ -517,9 +583,15 @@ function App() {
     canvas.height = video.videoHeight
     const context = canvas.getContext('2d')
     context.drawImage(video, 0, 0, canvas.width, canvas.height)
+
     const imageUrl = canvas.toDataURL('image/png')
+    const blob = await new Promise((resolve) => {
+      canvas.toBlob(resolve, 'image/png')
+    })
+    const imageFile = new File([blob], 'camera-capture.png', { type: 'image/png' })
+
     setCameraState((previous) => ({ ...previous, photo: imageUrl, cameraOpen: false, stream: previous.stream }))
-    setSelectedFile({ name: 'camera-capture.png' })
+    setSelectedFile(imageFile)
     setPreviewUrl(imageUrl)
     setScanState('uploaded')
     if (cameraState.stream) {
@@ -1299,7 +1371,7 @@ function App() {
               <div className="preview-actions">
                 {cameraState.photo && <button type="button" className="secondary-btn" onClick={openCamera}>Retake</button>}
                 <button type="button" className="secondary-btn" onClick={openScanFilePicker}>Replace image</button>
-                <button type="button" className="primary-btn" onClick={handleContinueScan}>{cameraState.photo ? 'Use Photo' : 'Continue'}</button>
+                <button type="button" className="primary-btn" onClick={handleContinueScan} disabled={isSubmittingPrescription || scanState === 'processing'}>{isSubmittingPrescription ? 'Analyzing Prescription...' : cameraState.photo ? 'Use Photo' : 'Continue'}</button>
               </div>
             </div>
           ) : (
