@@ -1,40 +1,40 @@
 # routes.py
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Form
 from sqlalchemy.orm import Session
+from typing import Optional
 
 from app.extension import get_sync_db  # your file with engine/SessionLocal
 from app.models.models import Medicine
-from app.pydantic.medcine import MedicinesPayload
 
 router = APIRouter()
 
-@router.post("/medicines")
-def create_medicines(payload: MedicinesPayload, db: Session = Depends(get_sync_db)):
-    if not payload.medicines:
-        raise HTTPException(status_code=400, detail="No medicines provided")
+@router.post("/medicine")
+def create_medicine(
+    medicine_name: str = Form(...),
+    dosage: Optional[str] = Form(None),
+    frequency: Optional[str] = Form(None),
+    duration: Optional[str] = Form(None),
+    db: Session = Depends(get_sync_db),
+):
+    if not medicine_name:
+        raise HTTPException(status_code=400, detail="No medicine name provided")
 
-    db_objects = [
-        Medicine(
-            medicine_name=med.medicine_name,
-            dosage=med.dosage,
-            frequency=med.frequency,
-            duration=med.duration,
-            timing=med.timing,
-            food_instruction=med.food_instruction,
-        )
-        for med in payload.medicines
-    ]
+    db_object = Medicine(
+        medicine_name=medicine_name,
+        dosage=dosage,
+        frequency=frequency,
+        duration=duration,
+    )
 
     try:
-        db.add_all(db_objects)
+        db.add(db_object)
         db.commit()
-        for obj in db_objects:
-            db.refresh(obj)
+        db.refresh(db_object)
     except Exception as e:
         db.rollback()
-        raise HTTPException(status_code=500, detail=f"Failed to save medicines: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to save medicine: {str(e)}")
 
     return {
-        "inserted": len(db_objects),
-        "ids": [str(obj.id) for obj in db_objects],
+        "inserted": 1,
+        "id": str(db_object.id),
     }
