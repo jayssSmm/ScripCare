@@ -506,7 +506,7 @@ function App() {
     )
   }
 
-  const handleAddMedicines = () => {
+  const handleAddMedicines = async () => {
     const newMedicines = ocrResults.map((medicine, index) => ({
       id: `${medicine.name.toLowerCase().replace(/\s+/g, '-')}-${Date.now()}-${index}`,
       name: medicine.name,
@@ -519,7 +519,7 @@ function App() {
       status: 'due',
       slot: medicine.timing.includes('PM') ? 'Afternoon' : medicine.timing.includes('AM') ? 'Morning' : 'Night',
       detail: `${medicine.dosage} · ${medicine.timing} · ${medicine.foodInstruction}`,
-    })).filter((medicine) => medicine.name))
+    })).filter((medicine) => medicine.name)
     const existingNames = new Set(medicines.map(medicineNameKey).filter(Boolean))
     const medicinesToSubmit = newMedicines.filter((medicine) => !existingNames.has(medicineNameKey(medicine)))
     const updatedMedicines = deduplicateMedicines([...medicines, ...newMedicines])
