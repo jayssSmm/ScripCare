@@ -7,8 +7,7 @@ import json
 
 load_dotenv()
 
-#from app.prescription.get_Schedule import generate_medicine_schedule
-from get_Schedule import generate_medicine_schedule
+
 
 def encode_image(image_path):
     with open(image_path, "rb") as f:
