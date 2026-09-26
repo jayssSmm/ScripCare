@@ -179,6 +179,7 @@ function App() {
   const [doseHistory, setDoseHistory] = useState(() => readStoredPatientData(readStoredSession()).doseHistory || [])
   const [notificationsOpen, setNotificationsOpen] = useState(false)
   const [profileOpen, setProfileOpen] = useState(false)
+  const [clearDoseHistoryConfirm, setClearDoseHistoryConfirm] = useState(false)
   const [profileCamera, setProfileCamera] = useState({ open: false, stream: null, error: '' })
   const [profilePhotoDraft, setProfilePhotoDraft] = useState('')
   const [selectedMedicine, setSelectedMedicine] = useState(null)
@@ -188,6 +189,7 @@ function App() {
   const [scanState, setScanState] = useState('idle')
   const [isSubmittingPrescription, setIsSubmittingPrescription] = useState(false)
   const [isSubmittingMedicines, setIsSubmittingMedicines] = useState(false)
+  const [isSavingReminder, setIsSavingReminder] = useState(false)
   const [ocrResults, setOcrResults] = useState([
     {
       id: 'ocr-1',
@@ -235,6 +237,8 @@ function App() {
   const cameraVideoRef = useRef(null)
   const fileInputRef = useRef(null)
   const medicineSubmissionInProgress = useRef(false)
+  const reminderSubmissionInProgress = useRef(false)
+  const reminderRequestRef = useRef(null)
   const profilePhotoInputRef = useRef(null)
   const profileCameraVideoRef = useRef(null)
 
@@ -385,6 +389,61 @@ function App() {
     setToast(message)
   }
 
+  const handleSetReminder = async (reminderMinutes) => {
+    if (reminderSubmissionInProgress.current || settings.reminderMinutes === reminderMinutes) return
+    if (!userProfile.name.trim() || !nextMedication?.name || !nextMedication?.timing) {
+      showToast('Add a patient and medication before setting a reminder.')
+      return
+    }
+
+    const patientName = userProfile.name.trim()
+    const medicineName = nextMedication.name.trim()
+    const reminderTime = `${reminderMinutes} minutes before ${nextMedication.timing}`
+    const requestSignature = `${session.user?.id || ''}:${nextMedication.id}:${reminderMinutes}`
+    if (reminderRequestRef.current?.signature !== requestSignature) {
+      reminderRequestRef.current = {
+        signature: requestSignature,
+        id: globalThis.crypto?.randomUUID?.() || `reminder-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      }
+    }
+
+    reminderSubmissionInProgress.current = true
+    setIsSavingReminder(true)
+    try {
+      const response = await fetch('http://localhost:8000/post/reminder/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          patient_name: patientName,
+          medicine_name: medicineName,
+          reminder_time: reminderTime,
+          idempotency_key: reminderRequestRef.current.id,
+        }),
+      })
+
+      let payload = null
+      try {
+        payload = await response.json()
+      } catch {
+        payload = null
+      }
+
+      if (!response.ok || payload?.status !== 'sent') {
+        showToast(payload?.detail || 'Caregiver notification failed; the reminder was not activated.')
+        return
+      }
+
+      setSettings((current) => ({ ...current, reminderMinutes }))
+      reminderRequestRef.current = null
+      showToast('Reminder set and caregiver notified.')
+    } catch {
+      showToast('Could not notify the caregiver. The reminder was not activated.')
+    } finally {
+      reminderSubmissionInProgress.current = false
+      setIsSavingReminder(false)
+    }
+  }
+
   const updateMedicineStatus = (medicineId, nextStatus, successMessage) => {
     const changedMedicine = medicines.find((medicine) => medicine.id === medicineId)
     setMedicines((previous) =>
@@ -439,6 +498,11 @@ function App() {
   const handleMarkAllNotificationsRead = () => {
     if (unreadNotificationCount === 0) return
     setNotifications((previous) => previous.map((notification) => ({ ...notification, read: true })))
+  }
+
+  const handleClearDoseHistory = () => {
+    setDoseHistory([])
+    setClearDoseHistoryConfirm(false)
   }
 
   const handleFileSelect = (event) => {
@@ -1357,10 +1421,10 @@ function App() {
 
             <div className="voice-actions">
               <button type="button" className="primary-btn" onClick={testVoice}>Test Voice</button>
-              <button type="button" className="secondary-btn" onClick={() => setSettings((current) => ({ ...current, reminderMinutes: 15 }))}>15 min</button>
-              <button type="button" className="secondary-btn" onClick={() => setSettings((current) => ({ ...current, reminderMinutes: 30 }))}>30 min</button>
-              <button type="button" className="secondary-btn" onClick={() => setSettings((current) => ({ ...current, reminderMinutes: 45 }))}>45 min</button>
-              <button type="button" className="secondary-btn" onClick={() => setSettings((current) => ({ ...current, reminderMinutes: 60 }))}>60 min</button>
+              <button type="button" className="secondary-btn" onClick={() => handleSetReminder(15)} disabled={isSavingReminder}>{isSavingReminder ? 'Saving...' : '15 min'}</button>
+              <button type="button" className="secondary-btn" onClick={() => handleSetReminder(30)} disabled={isSavingReminder}>{isSavingReminder ? 'Saving...' : '30 min'}</button>
+              <button type="button" className="secondary-btn" onClick={() => handleSetReminder(45)} disabled={isSavingReminder}>{isSavingReminder ? 'Saving...' : '45 min'}</button>
+              <button type="button" className="secondary-btn" onClick={() => handleSetReminder(60)} disabled={isSavingReminder}>{isSavingReminder ? 'Saving...' : '60 min'}</button>
             </div>
 
             <div className="timing-box">
@@ -1583,7 +1647,17 @@ function App() {
         </article>
       </div>
       <article className="panel dose-history-panel">
-        <div className="panel-header"><h3>Recent dose history</h3></div>
+        <div className="panel-header">
+          <h3>Recent dose history</h3>
+          <button
+            type="button"
+            className="secondary-btn small-btn"
+            onClick={() => setClearDoseHistoryConfirm(true)}
+            disabled={doseHistory.length === 0}
+          >
+            Clear Recent Dose History
+          </button>
+        </div>
         {doseHistory.length ? (
           <ul className="dose-history-list">
             {doseHistory.slice(0, 6).map((dose) => (
@@ -1796,6 +1870,22 @@ function App() {
                 </li>
               ))}
             </ul>
+          </div>
+        </div>
+      )}
+
+      {clearDoseHistoryConfirm && (
+        <div className="modal-backdrop" onClick={() => setClearDoseHistoryConfirm(false)}>
+          <div className="modal-panel medicine-panel" role="dialog" aria-modal="true" aria-labelledby="clear-dose-history-title" onClick={(event) => event.stopPropagation()}>
+            <div className="modal-header">
+              <h3 id="clear-dose-history-title">Clear recent dose history?</h3>
+              <button type="button" className="ghost-btn" onClick={() => setClearDoseHistoryConfirm(false)}>Cancel</button>
+            </div>
+            <p className="panel-copy">This removes dose history records only. Your medicines and other account data will remain unchanged.</p>
+            <div className="modal-actions">
+              <button type="button" className="secondary-btn" onClick={() => setClearDoseHistoryConfirm(false)}>Keep history</button>
+              <button type="button" className="primary-btn" onClick={handleClearDoseHistory}>Clear history</button>
+            </div>
           </div>
         </div>
       )}

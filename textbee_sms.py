@@ -9,7 +9,7 @@ def send_sms(device_id: str, api_key: str, recipients: list[str], message: str) 
     Args:
         device_id: Your TextBee device ID (from the dashboard).
         api_key: Your TextBee API key.
-        recipients: List of phone numbers in E.164 format, e.g. ["+12015550123"].
+        recipients: List of phone numbers in E.164 format.
         message: The SMS text to send.
 
     Returns:
@@ -38,7 +38,7 @@ if __name__ == "__main__":
     result = send_sms(
         device_id=DEVICE_ID,
         api_key=API_KEY,
-        recipients=["+12015550123"],
+        recipients=[os.environ["CAREGIVER_PHONE_NUMBER"]],
         message="Hello from Python!",
     )
     print(result)
