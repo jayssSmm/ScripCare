@@ -11,56 +11,7 @@ def generate_medicine_schedule(
     api_key: str | None = None,
     model: str = "qwen/qwen3.8-27b",
 ) -> dict:
-    """
-    Send a medicines payload to the Groq API and get back a structured
-    daily schedule with reminders.
-
-    Args:
-        payload: dict matching the shape:
-            {
-              "medicines": [
-                {
-                  "raw_text": str,
-                  "medicine_name": str,
-                  "dosage": str | None,
-                  "frequency": str | None,   # e.g. "1-0+1" (morning-afternoon-night)
-                  "duration": str | None,
-                  "confidence": str,
-                  "alternative_guesses": list[str]
-                },
-                ...
-              ]
-            }
-        api_key: Groq API key. Falls back to the GROQ_API_KEY env var.
-        model: Groq model to use.
-
-    Returns:
-        dict: parsed JSON schedule, shaped like:
-            {
-              "schedule": [
-                {
-                  "medicine_name": str,
-                  "dosage": str | None,
-                  "confidence": str,
-                  "reminders": [
-                    {
-                      "time_of_day": "morning" | "afternoon" | "evening" | "night",
-                      "suggested_time": "HH:MM",
-                      "relation_to_food": "before_food" | "after_food" | "unspecified",
-                      "reminder_text": str
-                    },
-                    ...
-                  ],
-                  "notes": str | None
-                },
-                ...
-              ]
-            }
-
-    Raises:
-        ValueError: if no API key is available or the model's response
-                    isn't valid JSON.
-    """
+    
     api_key = api_key or os.getenv("GROQ_API_KEY")
     if not api_key:
         raise ValueError(
