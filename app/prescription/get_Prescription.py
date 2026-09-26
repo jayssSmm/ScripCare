@@ -45,8 +45,7 @@ def get_Prescription(image_path):
     raw = completion.choices[0].message.content
     result = json.loads(raw)
 
-    schedule = generate_medicine_schedule(json.dumps(result))
-    return schedule
+    return result
 
 if __name__=="__main__":
     image_path = "test/ocr2.jpg"
