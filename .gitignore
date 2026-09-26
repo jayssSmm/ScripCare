@@ -2,4 +2,8 @@
 .venv
 node_modules/
 test
+<<<<<<< HEAD
 __pycache__/
+=======
+__pycache__/
+>>>>>>> jatin
