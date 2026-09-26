@@ -117,39 +117,6 @@ const readStoredActivePage = (session) => {
   }
 }
 
-const medicineName = (medicine) => {
-  const name = typeof medicine?.name === 'string' ? medicine.name : medicine?.medicine_name
-  return typeof name === 'string' ? name.trim() : ''
-}
-
-const medicineNameKey = (medicine) => medicineName(medicine).toLowerCase()
-
-const deduplicateMedicines = (medicines) => {
-  const uniqueMedicines = new Map()
-
-  ;(Array.isArray(medicines) ? medicines : []).forEach((medicine) => {
-    if (!medicine || typeof medicine !== 'object') return
-
-    const name = medicineName(medicine)
-    const key = name.toLowerCase()
-    if (!key) return
-
-    const existing = uniqueMedicines.get(key)
-    if (!existing) {
-      uniqueMedicines.set(key, { ...medicine, name })
-      return
-    }
-
-    Object.entries(medicine).forEach(([field, value]) => {
-      if ((existing[field] == null || existing[field] === '') && value != null && value !== '') {
-        existing[field] = value
-      }
-    })
-  })
-
-  return Array.from(uniqueMedicines.values())
-}
-
 function BrandMark() {
   return (
     <svg viewBox="0 0 64 64" className="brand-mark" aria-hidden="true">
@@ -539,44 +506,10 @@ function App() {
     )
   }
 
-  const submitMedicine = async (medicine) => {
-    const formData = new FormData()
-    formData.append('medicine_name', medicineName(medicine))
-    if (medicine.dosage) formData.append('dosage', medicine.dosage)
-    if (medicine.frequency) formData.append('frequency', medicine.frequency)
-    if (medicine.duration) formData.append('duration', medicine.duration)
-
-    try {
-      const response = await fetch('http://localhost:8000/medicine', {
-        method: 'POST',
-        body: formData,
-      })
-
-      let payload = null
-      try {
-        payload = await response.json()
-      } catch {
-        payload = null
-      }
-
-      if (!response.ok) {
-        return { ok: false, message: payload?.detail || `Medicine service returned HTTP ${response.status}.` }
-      }
-
-      return { ok: true }
-    } catch {
-      return { ok: false, networkError: true, message: 'The backend on port 8000 is unavailable.' }
-    }
-  }
-
-  const handleAddMedicines = async () => {
-    if (medicineSubmissionInProgress.current) return
-    medicineSubmissionInProgress.current = true
-    setIsSubmittingMedicines(true)
-
-    const newMedicines = deduplicateMedicines(ocrResults.map((medicine, index) => ({
-      id: `${medicineName(medicine).toLowerCase().replace(/\s+/g, '-')}-${Date.now()}-${index}`,
-      name: medicineName(medicine),
+  const handleAddMedicines = () => {
+    const newMedicines = ocrResults.map((medicine, index) => ({
+      id: `${medicine.name.toLowerCase().replace(/\s+/g, '-')}-${Date.now()}-${index}`,
+      name: medicine.name,
       dosage: medicine.dosage,
       frequency: medicine.frequency,
       duration: medicine.duration,
@@ -591,7 +524,7 @@ function App() {
     const medicinesToSubmit = newMedicines.filter((medicine) => !existingNames.has(medicineNameKey(medicine)))
     const updatedMedicines = deduplicateMedicines([...medicines, ...newMedicines])
 
-    setMedicines(updatedMedicines)
+    setMedicines((previous) => [...previous, ...newMedicines])
     setNotifications((previous) => [
       {
         id: Date.now(),
