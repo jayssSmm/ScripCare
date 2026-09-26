@@ -2,9 +2,9 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from database import get_sync_db  # your file with engine/SessionLocal
-from models import Medicine
-from schemas import MedicinesPayload
+from app.extension import get_sync_db  # your file with engine/SessionLocal
+from app.models.models import Medicine
+from app.pydantic.medcine import MedicinesPayload
 
 router = APIRouter()
 
