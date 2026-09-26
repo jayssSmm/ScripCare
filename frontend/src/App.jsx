@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import './App.css'
-import { demoCaregiver, demoPatient, demoProfiles } from '../../test/testProfiles.js'
+//import { demoCaregiver, demoPatient, demoProfiles } from '../../test/testProfiles.js'
 
 const navItems = ['Dashboard', 'Medicines', 'Scan Prescription', 'Adherence', 'Caregiver']
 const indianLanguages = [
