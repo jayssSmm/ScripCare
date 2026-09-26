@@ -117,6 +117,39 @@ const readStoredActivePage = (session) => {
   }
 }
 
+const medicineName = (medicine) => {
+  const name = typeof medicine?.name === 'string' ? medicine.name : medicine?.medicine_name
+  return typeof name === 'string' ? name.trim() : ''
+}
+
+const medicineNameKey = (medicine) => medicineName(medicine).toLowerCase()
+
+const deduplicateMedicines = (medicines) => {
+  const uniqueMedicines = new Map()
+
+  ;(Array.isArray(medicines) ? medicines : []).forEach((medicine) => {
+    if (!medicine || typeof medicine !== 'object') return
+
+    const name = medicineName(medicine)
+    const key = name.toLowerCase()
+    if (!key) return
+
+    const existing = uniqueMedicines.get(key)
+    if (!existing) {
+      uniqueMedicines.set(key, { ...medicine, name })
+      return
+    }
+
+    Object.entries(medicine).forEach(([field, value]) => {
+      if ((existing[field] == null || existing[field] === '') && value != null && value !== '') {
+        existing[field] = value
+      }
+    })
+  })
+
+  return Array.from(uniqueMedicines.values())
+}
+
 function BrandMark() {
   return (
     <svg viewBox="0 0 64 64" className="brand-mark" aria-hidden="true">
@@ -139,7 +172,7 @@ function App() {
   const [session, setSession] = useState(readStoredSession)
   const [patientDataLoaded, setPatientDataLoaded] = useState(() => readStoredSession().user?.role === 'patient' && readStoredSession().isLoggedIn)
   const [userProfile, setUserProfile] = useState(() => readStoredPatientData(readStoredSession()).profile || defaultProfile)
-  const [medicines, setMedicines] = useState(() => readStoredPatientData(readStoredSession()).medicines || [])
+  const [medicines, setMedicines] = useState(() => deduplicateMedicines(readStoredPatientData(readStoredSession()).medicines || []))
   const [caregiver, setCaregiver] = useState(() => readStoredPatientData(readStoredSession()).caregiver || null)
   const [notifications, setNotifications] = useState(() => readStoredPatientData(readStoredSession()).notifications || [])
   const [settings, setSettings] = useState(() => readStoredPatientData(readStoredSession()).settings || defaultSettings)
@@ -154,6 +187,7 @@ function App() {
   const [previewUrl, setPreviewUrl] = useState('')
   const [scanState, setScanState] = useState('idle')
   const [isSubmittingPrescription, setIsSubmittingPrescription] = useState(false)
+  const [isSubmittingMedicines, setIsSubmittingMedicines] = useState(false)
   const [ocrResults, setOcrResults] = useState([
     {
       id: 'ocr-1',
@@ -200,6 +234,7 @@ function App() {
   const [selectedVoiceName, setSelectedVoiceName] = useState('')
   const cameraVideoRef = useRef(null)
   const fileInputRef = useRef(null)
+  const medicineSubmissionInProgress = useRef(false)
   const profilePhotoInputRef = useRef(null)
   const profileCameraVideoRef = useRef(null)
 
@@ -216,7 +251,7 @@ function App() {
     if (!patientDataLoaded || !session.user?.id || session.user.role !== 'patient') return
     localStorage.setItem(getPatientDataKey(session.user.id), JSON.stringify({
       profile: userProfile,
-      medicines,
+      medicines: deduplicateMedicines(medicines),
       caregiver,
       settings,
       notifications,
@@ -401,6 +436,11 @@ function App() {
     )
   }
 
+  const handleMarkAllNotificationsRead = () => {
+    if (unreadNotificationCount === 0) return
+    setNotifications((previous) => previous.map((notification) => ({ ...notification, read: true })))
+  }
+
   const handleFileSelect = (event) => {
     const file = event.target.files?.[0]
     if (!file) return
@@ -499,10 +539,44 @@ function App() {
     )
   }
 
-  const handleAddMedicines = () => {
-    const newMedicines = ocrResults.map((medicine, index) => ({
-      id: `${medicine.name.toLowerCase().replace(/\s+/g, '-')}-${Date.now()}-${index}`,
-      name: medicine.name,
+  const submitMedicine = async (medicine) => {
+    const formData = new FormData()
+    formData.append('medicine_name', medicineName(medicine))
+    if (medicine.dosage) formData.append('dosage', medicine.dosage)
+    if (medicine.frequency) formData.append('frequency', medicine.frequency)
+    if (medicine.duration) formData.append('duration', medicine.duration)
+
+    try {
+      const response = await fetch('http://localhost:8000/medicine', {
+        method: 'POST',
+        body: formData,
+      })
+
+      let payload = null
+      try {
+        payload = await response.json()
+      } catch {
+        payload = null
+      }
+
+      if (!response.ok) {
+        return { ok: false, message: payload?.detail || `Medicine service returned HTTP ${response.status}.` }
+      }
+
+      return { ok: true }
+    } catch {
+      return { ok: false, networkError: true, message: 'The backend on port 8000 is unavailable.' }
+    }
+  }
+
+  const handleAddMedicines = async () => {
+    if (medicineSubmissionInProgress.current) return
+    medicineSubmissionInProgress.current = true
+    setIsSubmittingMedicines(true)
+
+    const newMedicines = deduplicateMedicines(ocrResults.map((medicine, index) => ({
+      id: `${medicineName(medicine).toLowerCase().replace(/\s+/g, '-')}-${Date.now()}-${index}`,
+      name: medicineName(medicine),
       dosage: medicine.dosage,
       frequency: medicine.frequency,
       duration: medicine.duration,
@@ -512,9 +586,12 @@ function App() {
       status: 'due',
       slot: medicine.timing.includes('PM') ? 'Afternoon' : medicine.timing.includes('AM') ? 'Morning' : 'Night',
       detail: `${medicine.dosage} · ${medicine.timing} · ${medicine.foodInstruction}`,
-    }))
+    })).filter((medicine) => medicine.name))
+    const existingNames = new Set(medicines.map(medicineNameKey).filter(Boolean))
+    const medicinesToSubmit = newMedicines.filter((medicine) => !existingNames.has(medicineNameKey(medicine)))
+    const updatedMedicines = deduplicateMedicines([...medicines, ...newMedicines])
 
-    setMedicines((previous) => [...previous, ...newMedicines])
+    setMedicines(updatedMedicines)
     setNotifications((previous) => [
       {
         id: Date.now(),
@@ -525,31 +602,45 @@ function App() {
       },
       ...previous,
     ])
-    setScanState('idle')
-    setSelectedFile(null)
-    setPreviewUrl('')
-    setOcrResults([
-      {
-        id: 'ocr-1',
-        name: 'Paracetamol',
-        dosage: '500 mg',
-        frequency: 'Twice daily',
-        duration: '5 days',
-        timing: '8:00 AM',
-        foodInstruction: 'After food',
-      },
-      {
-        id: 'ocr-2',
-        name: 'Cetirizine',
-        dosage: '10 mg',
-        frequency: 'Once daily',
-        duration: '5 days',
-        timing: '9:00 PM',
-        foodInstruction: 'At night',
-      },
-    ])
-    setActivePage('Dashboard')
-    showToast('Prescription added successfully')
+    try {
+      const results = await Promise.all(medicinesToSubmit.map(submitMedicine))
+      const failures = results.filter((result) => !result.ok)
+      if (failures.length) {
+        const firstFailure = failures[0]
+        showToast(`${failures.length} medicine(s) saved locally; backend submission failed: ${firstFailure.message}`)
+      } else if (medicinesToSubmit.length) {
+        showToast('Prescription added successfully')
+      } else {
+        showToast('Medicine list updated; no new medicines needed submission.')
+      }
+    } finally {
+      setScanState('idle')
+      setSelectedFile(null)
+      setPreviewUrl('')
+      setOcrResults([
+        {
+          id: 'ocr-1',
+          name: 'Paracetamol',
+          dosage: '500 mg',
+          frequency: 'Twice daily',
+          duration: '5 days',
+          timing: '8:00 AM',
+          foodInstruction: 'After food',
+        },
+        {
+          id: 'ocr-2',
+          name: 'Cetirizine',
+          dosage: '10 mg',
+          frequency: 'Once daily',
+          duration: '5 days',
+          timing: '9:00 PM',
+          foodInstruction: 'At night',
+        },
+      ])
+      setActivePage('Dashboard')
+      medicineSubmissionInProgress.current = false
+      setIsSubmittingMedicines(false)
+    }
   }
 
   const openCamera = async () => {
@@ -638,7 +729,7 @@ function App() {
     const patientData = storedData ? JSON.parse(storedData) : fallbackData
 
     setUserProfile(patientData.profile || user || defaultProfile)
-    setMedicines(patientData.medicines || [])
+    setMedicines(deduplicateMedicines(patientData.medicines || []))
     setCaregiver(patientData.caregiver || null)
     setSettings(patientData.settings || defaultSettings)
     setNotifications(patientData.notifications || [])
@@ -1281,7 +1372,10 @@ function App() {
         <article className="panel notifications-panel" aria-labelledby="notifications-heading">
           <div className="panel-header">
             <h3 id="notifications-heading">Notifications</h3>
-            <button type="button" className="panel-link" onClick={() => setNotificationsOpen(true)}>View all</button>
+            <div className="button-row">
+              <button type="button" className="panel-link" onClick={handleMarkAllNotificationsRead} disabled={unreadNotificationCount === 0}>Mark all read</button>
+              <button type="button" className="panel-link" onClick={() => setNotificationsOpen(true)}>View all</button>
+            </div>
           </div>
           {notifications.length ? (
             <ul className="notification-list">
@@ -1309,11 +1403,17 @@ function App() {
           <p className="eyebrow">Medicines</p>
           <h2>Medication routine</h2>
         </div>
-        <button type="button" className="primary-btn" onClick={() => setActivePage('Scan Prescription')}>Add prescription</button>
+        <div className="button-row">
+          <button type="button" className="secondary-btn" onClick={() => {
+            setMedicines([])
+            showToast('Medicines cleared')
+          }} disabled={medicines.length === 0}>Clear</button>
+          <button type="button" className="primary-btn" onClick={() => setActivePage('Scan Prescription')}>Add prescription</button>
+        </div>
       </div>
 
       <div className="medicine-grid">
-        {medicines.map((medicine) => (
+        {deduplicateMedicines(medicines).map((medicine) => (
           <article key={medicine.id} className="medicine-card">
             <div className="medicine-topline">
               <div>
@@ -1439,7 +1539,7 @@ function App() {
             </div>
 
             <div className="ocr-actions">
-              <button type="button" className="primary-btn" onClick={handleAddMedicines}>Add to My Medicines</button>
+              <button type="button" className="primary-btn" onClick={handleAddMedicines} disabled={isSubmittingMedicines}>{isSubmittingMedicines ? 'Adding Medicines...' : 'Add to My Medicines'}</button>
               <button type="button" className="secondary-btn" onClick={() => setScanState('uploaded')}>Edit Details</button>
             </div>
           </div>
